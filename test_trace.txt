@@ -1,0 +1,19 @@
+========================================
+Initializing System...
+[System] Successfully opened: test_trace.txt
+
+Simulation Started. Processing instructions...
+----------------------------------------
+[Warning] Data format error at line 5 -> "BAD_DATA_123". Skipping...
+----------------------------------------
+Simulation Completed!
+Total Instructions Processed: 4 lines
+
+--- Policy: LRU ---
+Total Access : 4
+Hits         : 2
+Misses       : 2
+Hit Rate     : 50 %
+-------------------
+========================================
+Press Enter to exit...
