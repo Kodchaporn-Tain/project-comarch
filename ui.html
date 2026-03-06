@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Trace Analyzer | KU Sriracha</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+<div class="max-w-6xl mx-auto">
+    <header class="flex flex-col items-center mb-10 gap-4 text-center">
+        <div>
+            <h1 class="text-4xl font-bold text-slate-800 tracking-tight">Cache Insight</h1>
+        </div>
+        <div class="flex gap-2 justify-center">
+            <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm">Online Mode</span>
+            <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wide shadow-sm">v2.0 Stable</span>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-1 space-y-6">
+            <div class="glass-card p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-semibold mb-4 text-slate-700">Data Input</h3>
+                <div class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors">
+                    <input type="file" id="traceFile" class="hidden">
+                    <label for="traceFile" class="cursor-pointer">
+                        <svg class="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <p class="mt-2 text-sm text-slate-600">Click to upload trace file</p>
+                    </label>
+                </div>
+                <button onclick="startAnalysis()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-200">
+                    Analyze Trace
+                </button>
+            </div>
+
+            <div class="glass-card p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-semibold mb-4 text-slate-700">Access Distribution</h3>
+                <canvas id="distributionChart" width="200" height="200"></canvas>
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 space-y-6">
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-blue-500">
+                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Read</p>
+                    <h2 id="readCount" class="text-2xl font-bold text-slate-800">0</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-orange-500">
+                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Write</p>
+                    <h2 id="writeCount" class="text-2xl font-bold text-slate-800">0</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-red-500">
+                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Errors</p>
+                    <h2 id="errorCount" class="text-2xl font-bold text-slate-800">0</h2>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden">
+                <div class="flex items-center px-4 py-2 bg-slate-800 gap-2">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span class="ml-2 text-xs text-slate-400 font-mono">system_logs.sh</span>
+                </div>
+                <div id="logOutput" class="p-6 h-64 font-mono text-sm text-green-400 custom-scroll overflow-y-auto leading-relaxed">
+                    > Waiting for trace input...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let myChart;
+
+    function initChart() {
+        const ctx = document.getElementById('distributionChart').getContext('2d');
+        myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Read', 'Write', 'Error'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: ['#3b82f6', '#f97316', '#ef4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: { cutout: '70%', plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    async function startAnalysis() {
+        const fileInput = document.getElementById('traceFile');
+        const log = document.getElementById('logOutput');
+        
+        if (!fileInput.files.length) return alert("กรุณาเลือกไฟล์!");
+
+        const file = fileInput.files[0];
+        log.innerHTML = `<span class="text-blue-400">[INIT]</span> Reading ${file.name}...\n`;
+
+        const reader = file.stream().getReader();
+        const decoder = new TextDecoder();
+        let stats = { reads: 0, writes: 0, errors: 0 };
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                const type = line.trim()[0];
+                if (type === 'R') stats.reads++;
+                else if (type === 'W') stats.writes++;
+                else stats.errors++;
+            });
+
+            document.getElementById('readCount').innerText = stats.reads.toLocaleString();
+            document.getElementById('writeCount').innerText = stats.writes.toLocaleString();
+            document.getElementById('errorCount').innerText = stats.errors.toLocaleString();
+            
+            myChart.data.datasets[0].data = [stats.reads, stats.writes, stats.errors];
+            myChart.update('none');
+        }
+        log.innerHTML += `<br><span class="text-yellow-400">[DONE]</span> Analysis complete. Total lines: ${(stats.reads + stats.writes + stats.errors).toLocaleString()}`;
+    }
+
+    window.onload = initChart;
+</script>
+</body>
+</html>
